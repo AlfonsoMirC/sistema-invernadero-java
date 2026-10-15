@@ -6,11 +6,12 @@ Voy a representar, mediante una aplicación de consola en Java, un **invernadero
 
 El funcionamiento general sigue tres pasos:
 
+```text
 OBSERVAR  →  EVALUAR  →  ACTUAR
 (sensores)   (cada sensor     (sistema de riego)
               interpreta su
               medición)
-
+```
 
 ### Información que el sistema necesita manejar
 
@@ -46,11 +47,11 @@ OBSERVAR  →  EVALUAR  →  ACTUAR
 
 Un número por sí solo no dice nada. El valor `32` significa cosas diferentes dependiendo de quién lo mide:
 
-
+```text
 Sensor de temperatura       → 32 °C → temperatura alta
 Sensor de humedad ambiental → 32 %  → humedad ambiental baja
 Sensor de humedad del suelo → 32 %  → humedad del suelo adecuada
-
+```
 
 Por eso la interpretación de una medición tiene que estar ligada al tipo de sensor que la produce, y no a un lugar central que reciba solo el número.
 
@@ -164,14 +165,17 @@ Sí: el **sensor**. Concentra la información y los comportamientos que comparte
 
 El sensor de temperatura, el sensor de humedad ambiental y el sensor de humedad del suelo. Cada uno **es un** sensor, pero agrega su propia unidad, sus propios rangos y su propia forma de interpretar.
 
-
+```text
                   Sensor
+             (lo que es común)
                     │
       ┌─────────────┼─────────────┐
       │             │             │
  Temperatura   Hum. ambiental  Hum. suelo
           (lo que es particular)
+```
 
+> Este esquema solo resume la idea de generalización y especialización; todavía no es el diagrama UML.
 
 ### Una alternativa que consideré
 
@@ -235,3 +239,83 @@ Porque sus responsabilidades son diferentes, incluso opuestas:
 5. **Rompería el trato común a los sensores.** Si fuera un sensor, podría guardarse en la misma colección que los demás, y al pedirle a cada elemento que interprete su medición, el sistema de riego no tendría nada que interpretar.
 
 La relación correcta es de **colaboración**: el invernadero consulta al sensor de humedad del suelo y, con esa información, le indica al sistema de riego si debe activarse o desactivarse.
+
+---
+
+# Fase 2. Diseño orientado a objetos
+
+## 6. Diseño de clases
+
+A partir de los objetos y responsabilidades de las secciones 2 y 3 propongo **seis clases**. La clase `Main` no forma parte del modelo: solo crea los objetos, simula las mediciones y muestra los resultados.
+
+### 6.1 Propuesta de clases
+
+| Clase | Atributos propuestos | Tipo de dato | Métodos propuestos | Responsabilidad |
+|---|---|---|---|---|
+| `Sensor` | `id`<br>`ubicacion`<br>`unidad`<br>`activo`<br>`ultimaMedicion` | `String`<br>`String`<br>`String`<br>`boolean`<br>`double` | `Sensor(id, ubicacion, unidad)`<br>`getId()`, `getUbicacion()`, `getUnidad()`<br>`isActivo()`, `getUltimaMedicion()`<br>`activar()`, `desactivar()`<br>`registrarMedicion(valor)`<br>`evaluarMedicion()`<br>`obtenerResumen()` | Guardar y administrar lo que tienen en común todos los sensores. |
+| `SensorTemperatura` | `LIMITE_BAJO` (18)<br>`LIMITE_ALTO` (30) | `double` constante<br>`double` constante | `SensorTemperatura(id, ubicacion)`<br>`evaluarMedicion()` *(sobrescrito)*<br>`convertirAFahrenheit()` | Interpretar la temperatura del aire en °C. |
+| `SensorHumedad` | `LIMITE_BAJO` (40)<br>`LIMITE_ALTO` (70) | `double` constante<br>`double` constante | `SensorHumedad(id, ubicacion)`<br>`registrarMedicion(valor)` *(sobrescrito)*<br>`evaluarMedicion()` *(sobrescrito)* | Interpretar la humedad ambiental en %. |
+| `SensorHumedadSuelo` | `LIMITE_BAJO` (30)<br>`LIMITE_ALTO` (70) | `double` constante<br>`double` constante | `SensorHumedadSuelo(id, ubicacion)`<br>`registrarMedicion(valor)` *(sobrescrito)*<br>`evaluarMedicion()` *(sobrescrito)*<br>`requiereRiego()` | Interpretar la humedad del suelo e indicar si hace falta regar. |
+| `SistemaRiego` | `id`<br>`activo` | `String`<br>`boolean` | `SistemaRiego(id)`<br>`getId()`, `isActivo()`<br>`activar()`, `desactivar()`<br>`obtenerEstado()` | Suministrar o detener el agua. No mide ni decide. |
+| `Invernadero` | `nombre`<br>`sensores`<br>`sistemaRiego` | `String`<br>`ArrayList<Sensor>`<br>`SistemaRiego` | `Invernadero(nombre, sistemaRiego)`<br>`getNombre()`<br>`agregarSensor(sensor)`<br>`evaluarSensores()`<br>`actualizarRiego()`<br>`mostrarEstado()` | Agrupar los sensores y el sistema de riego, y decidir cuándo regar. |
+
+> `SensorHumedad` representa la **humedad ambiental**. Uso ese nombre porque es el que pide la práctica.
+
+### 6.2 Comportamiento esperado de los métodos principales
+
+| Método | Clase | Qué hará |
+|---|---|---|
+| `registrarMedicion(valor)` | `Sensor` | Guarda el valor como última medición **solo si el sensor está activo**. Devuelve `true` si se registró y `false` si no. |
+| `registrarMedicion(valor)` | `SensorHumedad` y `SensorHumedadSuelo` | Rechaza (devuelve `false`) los valores menores a 0 o mayores a 100. Si el valor es válido, llama a `super.registrarMedicion(valor)` para que la superclase haga el resto. |
+| `evaluarMedicion()` | `Sensor` | Versión general: devuelve `"Sin criterio de interpretación"`. Existe para que el método se pueda llamar desde cualquier referencia de tipo `Sensor`. |
+| `evaluarMedicion()` | `SensorTemperatura` | menor a 18 → `"Temperatura baja"`; de 18 a 30 → `"Temperatura adecuada"`; mayor a 30 → `"Temperatura alta"`. |
+| `evaluarMedicion()` | `SensorHumedad` | menor a 40 → `"Humedad ambiental baja"`; de 40 a 70 → `"Humedad ambiental adecuada"`; mayor a 70 → `"Humedad ambiental alta"`. |
+| `evaluarMedicion()` | `SensorHumedadSuelo` | menor a 30 → `"Humedad del suelo baja"`; de 30 a 70 → `"Humedad del suelo adecuada"`; mayor a 70 → `"Humedad del suelo alta"`. |
+| `obtenerResumen()` | `Sensor` | Arma un texto con identificación, ubicación, estado, medición con su unidad e interpretación. Si el sensor está inactivo lo indica en lugar de evaluar. Llama a `evaluarMedicion()`, así que cada sensor muestra **su propia** interpretación sin que este método se repita en las subclases. |
+| `convertirAFahrenheit()` | `SensorTemperatura` | Devuelve la última medición en °F (`°C × 9/5 + 32`). |
+| `requiereRiego()` | `SensorHumedadSuelo` | Devuelve `true` si el sensor está activo y su medición es menor a `LIMITE_BAJO`. Usa la misma constante que `evaluarMedicion()`, así el criterio existe en un solo lugar. |
+| `evaluarSensores()` | `Invernadero` | Recorre la lista de sensores y muestra el resumen de cada uno, **sin** usar `if/else` para saber de qué tipo es cada sensor. |
+| `actualizarRiego()` | `Invernadero` | Busca en la lista los sensores de humedad del suelo (`instanceof`), los convierte a ese tipo (casting) y les pregunta `requiereRiego()`. Si alguno lo necesita, activa el riego; si no, lo desactiva. |
+| `mostrarEstado()` | `Invernadero` | Muestra el nombre del invernadero, la evaluación de los sensores y el estado del riego. |
+| `obtenerEstado()` | `SistemaRiego` | Devuelve `"ACTIVO - suministrando agua"` o `"INACTIVO - riego detenido"`. |
+
+Los valores que caen **exactamente en un límite** (18, 30, 40 o 70) los considero "adecuados", porque el documento de contexto dice "entre 18 °C y 30 °C" (y lo mismo para las humedades). En el código esto será: `< LIMITE_BAJO` → baja, `> LIMITE_ALTO` → alta y cualquier otro caso → adecuada.
+
+### 6.3 Encapsulación
+
+**Todos los atributos serán `private`** y todos los métodos de la tabla serán `public`.
+
+| Atributo | Clase | ¿Cómo se consulta desde fuera? | ¿Cómo puede cambiar? | Por qué es `private` |
+|---|---|---|---|---|
+| `id` | `Sensor` | `getId()` | Solo en el constructor | Identifica al sensor; no debería cambiar una vez creado. |
+| `ubicacion` | `Sensor` | `getUbicacion()` | Solo en el constructor | Supongo que un sensor no se cambia de lugar durante la ejecución. |
+| `unidad` | `Sensor` | `getUnidad()` | Solo en el constructor, por medio de `super(...)` | La define cada subclase. Si se pudiera cambiar desde fuera, un sensor de temperatura podría terminar diciendo "%". |
+| `activo` | `Sensor` | `isActivo()` | `activar()` / `desactivar()` | El estado cambia con acciones con nombre, no asignando un valor cualquiera. |
+| `ultimaMedicion` | `Sensor` | `getUltimaMedicion()` | `registrarMedicion(valor)` | Si fuera pública, `sensor.ultimaMedicion = 25;` se saltaría las reglas: guardaría valores en un sensor inactivo o un 150 % de humedad. |
+| `LIMITE_BAJO`, `LIMITE_ALTO` | Las tres subclases | No se consultan | Nunca (son `static final`) | Son el criterio interno de cada sensor; nadie fuera de la clase necesita conocerlos. |
+| `id` | `SistemaRiego` | `getId()` | Solo en el constructor | Igual que en los sensores. |
+| `activo` | `SistemaRiego` | `isActivo()`, `obtenerEstado()` | `activar()` / `desactivar()` | Solo el sistema de riego debe cambiar su propio estado. |
+| `nombre` | `Invernadero` | `getNombre()` | Solo en el constructor | — |
+| `sensores` | `Invernadero` | No se expone la lista | `agregarSensor(sensor)` | Si la lista fuera pública, `Main` podría vaciarla o agregar `null` sin control. |
+| `sistemaRiego` | `Invernadero` | No se expone | Solo en el constructor | Así el riego solo se activa o desactiva por medio de `actualizarRiego()`. |
+
+Decisiones relacionadas:
+
+- **No propongo *setters*** como `setUltimaMedicion()` o `setActivo()`. Cada cambio se hace con un método que tiene sentido en el problema (`registrarMedicion`, `activar`, `desactivar`), y es ahí donde se aplican las reglas.
+- Las subclases **tampoco pueden usar directamente** los atributos privados de `Sensor`. Para leer la medición dentro de `evaluarMedicion()` usarán `getUltimaMedicion()`. Me parece correcto: ni siquiera una subclase puede cambiar la medición sin pasar por `registrarMedicion()`.
+
+### 6.4 Constructores
+
+| Clase | Constructor | Información que recibe | Qué inicializa |
+|---|---|---|---|
+| `Sensor` | `Sensor(String id, String ubicacion, String unidad)` | Identificación, ubicación y unidad | Guarda los tres datos; `activo = true`; `ultimaMedicion = 0.0` |
+| `SensorTemperatura` | `SensorTemperatura(String id, String ubicacion)` | Identificación y ubicación | Llama a `super(id, ubicacion, "°C")` |
+| `SensorHumedad` | `SensorHumedad(String id, String ubicacion)` | Identificación y ubicación | Llama a `super(id, ubicacion, "%")` |
+| `SensorHumedadSuelo` | `SensorHumedadSuelo(String id, String ubicacion)` | Identificación y ubicación | Llama a `super(id, ubicacion, "%")` |
+| `SistemaRiego` | `SistemaRiego(String id)` | Identificación | `activo = false` (empieza detenido) |
+| `Invernadero` | `Invernadero(String nombre, SistemaRiego sistemaRiego)` | Nombre y el sistema de riego que controlará | Guarda ambos y crea la lista de sensores vacía |
+
+Las subclases **no reciben la unidad** como parámetro: cada una la pasa fija a `super(...)`. Así es imposible crear un `SensorTemperatura` en "%".
+
+---
+
