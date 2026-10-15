@@ -319,3 +319,125 @@ Las subclases **no reciben la unidad** como parámetro: cada una la pasa fija a 
 
 ---
 
+## 7. Jerarquía de clases
+
+```text
+Sensor                   ← superclase
+├── SensorTemperatura    ← subclase
+├── SensorHumedad        ← subclase
+└── SensorHumedadSuelo   ← subclase
+
+SistemaRiego             ← fuera de la jerarquía
+Invernadero              ← fuera de la jerarquía (coordina)
+```
+
+| Clase | ¿Forma parte de la jerarquía de `Sensor`? | Cómo se relaciona con las demás |
+|---|---|---|
+| `SensorTemperatura` | Sí, es subclase | **Es un** `Sensor` |
+| `SensorHumedad` | Sí, es subclase | **Es un** `Sensor` |
+| `SensorHumedadSuelo` | Sí, es subclase | **Es un** `Sensor`; el invernadero usa su método `requiereRiego()` |
+| `SistemaRiego` | No | El invernadero **tiene** un sistema de riego y lo controla |
+| `Invernadero` | No | **Tiene** varios sensores y un sistema de riego |
+
+Las tres subclases heredan **directamente** de `Sensor`, sin clases intermedias (la razón está en la sección 4, "Una alternativa que consideré").
+
+---
+
+## 8. Diagrama UML inicial
+
+![Diagrama UML inicial](docs/uml-inicial-invernadero.png)
+
+Cómo leer el diagrama:
+
+- `-` significa atributo privado y `+` método público.
+- Los atributos **subrayados** son `static`; `{readOnly}` indica que son `final` (constantes).
+- En cada clase, el primer método del segundo compartimento es el **constructor**.
+- La flecha con **triángulo vacío** representa herencia (la punta señala a la superclase).
+- El **rombo vacío** representa agregación: el invernadero tiene sensores y un sistema de riego, pero esos objetos se crean fuera de él (en `Main`) y se le entregan.
+- La flecha **punteada «usa»** representa una dependencia: el invernadero usa un método que solo existe en `SensorHumedadSuelo`, por eso necesita `instanceof` y casting.
+- Un método que aparece en `Sensor` y se repite en una subclase con la misma firma (`evaluarMedicion()`, `registrarMedicion(valor)`) es un método **sobrescrito**.
+- **No existe ninguna línea entre `SistemaRiego` y `Sensor`**: no hay herencia entre ellos y solo se conectan por medio del invernadero.
+
+---
+
+## 9. Justificación del diseño
+
+### 1. ¿Por qué propuse esas clases?
+
+Cada clase sale de un objeto identificado en la sección 2. `Sensor` existe para no repetir lo que comparten los tres sensores. Las tres subclases existen porque cada tipo interpreta su medición de forma diferente. `SistemaRiego` existe porque tiene un estado propio que cambia y acciones propias. `Invernadero` existe para que la decisión de riego no termine dentro de `Main`, de un sensor o del sistema de riego. No creé clases para la medición, la interpretación ni los rangos (las razones están en la sección 2).
+
+### 2. ¿Cuál es la responsabilidad principal de cada una?
+
+| Clase | Responsabilidad principal |
+|---|---|
+| `Sensor` | Administrar los datos y comportamientos comunes de cualquier sensor. |
+| `SensorTemperatura` | Interpretar la temperatura del aire. |
+| `SensorHumedad` | Interpretar la humedad ambiental. |
+| `SensorHumedadSuelo` | Interpretar la humedad del suelo e indicar si hace falta regar. |
+| `SistemaRiego` | Activar o detener el riego. |
+| `Invernadero` | Coordinar sensores y riego, y tomar la decisión de regar. |
+
+### 3. ¿Por qué determinados atributos serán `private`?
+
+Todos lo serán, para que el estado de cada objeto solo cambie mediante sus propios métodos y se respeten las reglas: no registrar mediciones en sensores inactivos, no aceptar humedades fuera de 0–100 % y no cambiar la unidad o la identificación después de crear el objeto. El detalle está en la sección 6.3.
+
+### 4. ¿Qué información proporcionaré mediante los constructores?
+
+Lo que un objeto necesita para existir desde el inicio y que no cambiará después: identificación y ubicación para los sensores, la unidad (que cada subclase pasa fija con `super(...)`), la identificación del sistema de riego y, para el invernadero, su nombre y el sistema de riego que controlará. El estado inicial (sensor activo, medición en 0, riego detenido) lo fija el constructor sin pedirlo. El detalle está en la sección 6.4.
+
+### 5. ¿Cuál será la superclase?
+
+`Sensor`.
+
+### 6. ¿Qué clases serán subclases?
+
+`SensorTemperatura`, `SensorHumedad` y `SensorHumedadSuelo`.
+
+### 7. ¿Por qué existe una relación "es un" entre ellas?
+
+Porque todo sensor de temperatura, de humedad ambiental o de humedad del suelo **es** un sensor: tiene identificación, ubicación, estado y medición, y puede registrar e interpretar mediciones. Por eso, en cualquier parte del programa donde se espere un `Sensor` (por ejemplo, la lista del invernadero) se puede usar cualquiera de los tres tipos y todo sigue teniendo sentido. Al revés no se cumple: no todo sensor es un sensor de temperatura.
+
+### 8. ¿Qué información o comportamiento coloqué en la superclase?
+
+- Los cinco atributos comunes: `id`, `ubicacion`, `unidad`, `activo` y `ultimaMedicion`.
+- Sus métodos de consulta, `activar()`, `desactivar()` y `registrarMedicion(valor)`, que funcionan igual para todos.
+- `obtenerResumen()`, que se escribe una sola vez y sirve para los tres tipos porque internamente llama a `evaluarMedicion()`.
+- Una **versión general** de `evaluarMedicion()`. Aunque cada subclase la va a sobrescribir, tiene que existir en `Sensor`: si no, una referencia de tipo `Sensor` no podría llamar a `evaluarMedicion()` y no habría polimorfismo.
+
+Sobre la unidad: el atributo es común (todos los sensores tienen una), pero el **valor** es particular. Por eso el atributo está en la superclase y el valor lo decide cada subclase con `super(...)`.
+
+> Si se pudieran usar clases abstractas, `Sensor` sería abstracta, porque en el invernadero no existe un "sensor genérico". Como esta práctica no las usa, `Sensor` será una clase normal y su `evaluarMedicion()` devolverá un texto por defecto. En el programa nunca crearé un objeto `new Sensor(...)` directamente.
+
+### 9. ¿Qué elementos permanecerán en las subclases?
+
+- Los límites de interpretación (`LIMITE_BAJO` y `LIMITE_ALTO`) y la implementación de `evaluarMedicion()`.
+- En las dos humedades, la validación de que el valor esté entre 0 y 100 (`registrarMedicion` sobrescrito).
+- `convertirAFahrenheit()` en `SensorTemperatura`: solo tiene sentido para una temperatura.
+- `requiereRiego()` en `SensorHumedadSuelo`: preguntarle a un sensor de temperatura si "requiere riego" no tiene sentido, así que no lo puse en `Sensor` solo para evitar el casting.
+
+Consideré poner los límites en la superclase y que `Sensor` hiciera la comparación para todos. Lo descarté porque entonces los tres sensores interpretarían con exactamente el mismo código y sobrescribir `evaluarMedicion()` ya no tendría sentido. Además, un sensor futuro podría no interpretar con dos límites (por ejemplo, uno de luminosidad podría distinguir entre "día" y "noche").
+
+### 10. ¿Por qué `SistemaRiego` no pertenece a la jerarquía de sensores?
+
+Porque no **es un** sensor: el sensor observa y el sistema de riego actúa (la explicación completa está al final de la sección 5). En el diseño esto se ve en que `SistemaRiego` no hereda de nadie, no tiene `ultimaMedicion` ni `evaluarMedicion()`, y en el UML no hay ninguna línea que lo una con `Sensor`. La única conexión es indirecta: el `Invernadero` le pregunta al `SensorHumedadSuelo` si hace falta regar y luego le indica al `SistemaRiego` que se active o se desactive.
+
+### 11. ¿Qué decisiones tomé para evitar duplicar responsabilidades?
+
+- Los atributos comunes y sus métodos están **una sola vez**, en `Sensor`. Las subclases no los vuelven a declarar.
+- `obtenerResumen()` se escribe una vez en `Sensor` y sirve para todos gracias a que llama a `evaluarMedicion()`.
+- El criterio para saber si la humedad del suelo es baja existe **en un solo lugar**: `requiereRiego()` usa la misma constante `LIMITE_BAJO` que `evaluarMedicion()`. Ni el invernadero ni el sistema de riego repiten el número 30.
+- El estado del riego solo lo guarda y modifica `SistemaRiego`.
+- La decisión de regar solo se toma en `Invernadero.actualizarRiego()`.
+
+La única repetición que acepté conscientemente es la validación de 0 a 100 %, que aparece en `SensorHumedad` y en `SensorHumedadSuelo`. Es una regla de una línea y, para eliminarla, tendría que crear la clase intermedia que descarté en la sección 4. Me pareció más claro repetir esa línea que forzar una jerarquía que no corresponde al problema.
+
+---
+
+## 10. Aspectos que podrían cambiar durante la implementación
+
+Dejo anotadas las decisiones de las que no estoy completamente seguro, para revisarlas al comparar el UML inicial con el final:
+
+- Usar `ArrayList<Sensor>` o un arreglo `Sensor[]` para la colección del invernadero.
+- Si `evaluarMedicion()` también debería tomar en cuenta si el sensor está inactivo, o si basta con que lo haga `obtenerResumen()`.
+- Si hace falta distinguir un sensor que todavía no tiene mediciones de uno que midió exactamente 0.
+- Si `mostrarEstado()` y `evaluarSensores()` deben seguir siendo métodos separados.
