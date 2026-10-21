@@ -441,3 +441,375 @@ Dejo anotadas las decisiones de las que no estoy completamente seguro, para revi
 - Si `evaluarMedicion()` también debería tomar en cuenta si el sensor está inactivo, o si basta con que lo haga `obtenerResumen()`.
 - Si hace falta distinguir un sensor que todavía no tiene mediciones de uno que midió exactamente 0.
 - Si `mostrarEstado()` y `evaluarSensores()` deben seguir siendo métodos separados.
+
+---
+
+# Fase 3. Implementación de la jerarquía y sobrescritura
+
+## 11. Implementación
+
+En esta fase implementé la jerarquía de sensores tal como aparece en el UML inicial:
+
+| Archivo | Contenido |
+|---|---|
+| `src/Sensor.java` | Superclase con los cinco atributos `private`, constructor, métodos de consulta, `activar()`, `desactivar()`, `registrarMedicion()`, la versión general de `evaluarMedicion()` y `obtenerResumen()`. |
+| `src/SensorTemperatura.java` | Límites 18 y 30, constructor con `super(id, ubicacion, "°C")`, `convertirAFahrenheit()` y `evaluarMedicion()` sobrescrito. |
+| `src/SensorHumedad.java` | Límites 40 y 70, constructor con `super(id, ubicacion, "%")`, `registrarMedicion()` y `evaluarMedicion()` sobrescritos. |
+| `src/SensorHumedadSuelo.java` | Límites 30 y 70, constructor con `super(id, ubicacion, "%")`, `requiereRiego()`, `registrarMedicion()` y `evaluarMedicion()` sobrescritos. |
+| `src/Main.java` | Crea un sensor de cada tipo y prueba sus comportamientos. |
+
+`SistemaRiego` e `Invernadero` todavía no están implementados; corresponden a las fases 4 y 5.
+
+### Encapsulación aplicada
+
+Ningún atributo se modifica directamente desde `Main`. Por ejemplo, para cambiar la medición no existe `sensor.ultimaMedicion = 25;` (ni siquiera compilaría, porque el atributo es `private`). La única forma es `registrarMedicion(valor)`, que aplica las reglas:
+
+- Un sensor inactivo no acepta mediciones nuevas.
+- Los sensores de humedad no aceptan valores fuera de 0 a 100 %.
+
+Las subclases tampoco tocan los atributos de `Sensor` directamente: dentro de `evaluarMedicion()` leen el valor con `getUltimaMedicion()`.
+
+### Decisiones tomadas al implementar
+
+- **`evaluarMedicion()` no revisa si el sensor está inactivo.** Solo interpreta el número. Quien revisa el estado es `obtenerResumen()`, que muestra "sin evaluación" si el sensor está inactivo. Así la revisión está en un solo lugar y no se repite en las tres subclases. (Esto resuelve uno de los puntos de la sección 10.)
+- Los valores que caen justo en un límite se consideran adecuados: en el código, `< LIMITE_BAJO` es bajo, `> LIMITE_ALTO` es alto y el resto es adecuado.
+- `Main` usa por ahora **referencias del tipo específico** (`SensorTemperatura temperatura = ...`). El uso de referencias de tipo `Sensor` y la colección polimórfica corresponden a la Fase 4.
+
+Hasta este punto **el código corresponde al UML inicial sin cambios**.
+
+### Resultado de la ejecución
+
+```text
+Sistema de invernadero inteligente
+
+=== 1. Sensores creados (constructores, super y métodos heredados) ===
+T-01 | Zona norte | unidad: °C | activo: true
+H-01 | Zona central | unidad: % | activo: true
+S-01 | Zona sur | unidad: % | activo: true
+
+=== 2. Sensor de temperatura: baja, adecuada y alta ===
+[T-01] Zona norte | ACTIVO | 15.0 °C -> Temperatura baja
+[T-01] Zona norte | ACTIVO | 25.0 °C -> Temperatura adecuada
+[T-01] Zona norte | ACTIVO | 34.0 °C -> Temperatura alta
+
+=== 3. Sensor de humedad ambiental: baja, adecuada y alta ===
+[H-01] Zona central | ACTIVO | 32.0 % -> Humedad ambiental baja
+[H-01] Zona central | ACTIVO | 55.0 % -> Humedad ambiental adecuada
+[H-01] Zona central | ACTIVO | 82.0 % -> Humedad ambiental alta
+
+=== 4. Sensor de humedad del suelo: baja, adecuada y alta ===
+[S-01] Zona sur | ACTIVO | 18.0 % -> Humedad del suelo baja
+[S-01] Zona sur | ACTIVO | 48.0 % -> Humedad del suelo adecuada
+[S-01] Zona sur | ACTIVO | 83.0 % -> Humedad del suelo alta
+
+=== 5. Mismo valor (32), distinta interpretación ===
+T-01: Temperatura alta
+H-01: Humedad ambiental baja
+S-01: Humedad del suelo adecuada
+
+=== 6. Reglas al registrar mediciones (encapsulación) ===
+H-01 intenta registrar 150 %: false | última medición: 32.0 %
+T-01 inactivo intenta registrar 20 °C: false | última medición: 32.0 °C
+[T-01] Zona norte | INACTIVO | sin evaluación
+T-01 activado de nuevo:
+[T-01] Zona norte | ACTIVO | 32.0 °C -> Temperatura alta
+
+=== 7. Comportamientos propios de una subclase ===
+T-01: 32.0 °C = 89.6 °F
+S-01 con 22.0 %: ¿requiere riego? true
+S-01 con 55.0 %: ¿requiere riego? false
+```
+
+La sección 5 de la salida es la que mejor muestra la sobrescritura: el mismo método, `evaluarMedicion()`, con el mismo valor (32), da tres respuestas diferentes según el tipo de sensor, igual que en el ejemplo del documento de contexto.
+
+---
+
+## 12. Constructores y `super`
+
+### 1. ¿Los constructores de la superclase se heredan?
+
+**No.** Un constructor lleva el nombre de su clase, así que `SensorTemperatura` no recibe el constructor `Sensor(id, ubicacion, unidad)`; tiene que declarar el suyo. Lo comprobé en mi código: si intento crear
+
+```java
+//new SensorTemperatura("T-01", "Zona norte", "°C");
+```
+
+el programa no compila, porque `SensorTemperatura` solo tiene un constructor de dos parámetros, aunque `Sensor` tenga uno de tres. Lo que sí se heredan son los métodos públicos, como `getId()` o `activar()`. Los atributos `private` de `Sensor` sí forman parte de cada objeto `SensorTemperatura` (cada uno tiene su propio `id`, su `ubicacion`, etc.), pero la subclase no puede usarlos directamente; los consulta con los métodos públicos.
+
+### 2. Cuando creo un objeto de una subclase, ¿qué constructor se ejecuta primero?
+
+**Primero se ejecuta el de la superclase.** Al hacer `new SensorTemperatura("T-01", "Zona norte")`:
+
+1. Se entra al constructor de `SensorTemperatura`.
+2. Su primera instrucción es `super(id, ubicacion, "°C")`, que ejecuta el constructor de `Sensor`. Este guarda `id`, `ubicacion` y `unidad`, y deja `activo = true` y `ultimaMedicion = 0.0`.
+3. Al terminar, se regresa al constructor de `SensorTemperatura` y se ejecuta lo que siga después de `super(...)`. En mi caso no hay nada más, porque los límites son constantes `static`.
+
+Java obliga a que `super(...)` sea la primera instrucción: la parte "sensor" del objeto tiene que estar lista antes que la parte "sensor de temperatura". También comprobé que si quito la línea `super(...)`, el programa no compila. Sin ella, Java intenta llamar automáticamente a un constructor `Sensor()` sin parámetros, y mi clase `Sensor` no tiene uno.
+
+### 3. ¿Para qué utilicé `super(...)`?
+
+Para dos cosas:
+
+- **Inicializar la parte del objeto que pertenece a `Sensor`.** Los atributos `id`, `ubicacion`, `unidad`, `activo` y `ultimaMedicion` son `private` en `Sensor`, así que la subclase no puede asignarlos directamente. La única forma es pedirle al constructor de `Sensor` que lo haga.
+- **Fijar la unidad de cada tipo de sensor.** Cada subclase pasa su unidad fija: `"°C"` en `SensorTemperatura` y `"%"` en las dos humedades. Por eso quien crea el sensor no tiene que (ni puede) indicar la unidad.
+
+Además usé `super` en un método: en `SensorHumedad` y `SensorHumedadSuelo`, el `registrarMedicion(valor)` sobrescrito revisa que el valor esté entre 0 y 100 y después llama a `super.registrarMedicion(valor)`. Así no repito la regla de "solo registrar si está activo", que ya está en `Sensor`; solo agrego la regla que le corresponde a las humedades.
+
+---
+
+## 13. Sobrescritura
+
+### 1. ¿Qué método sobrescribí?
+
+Principalmente **`evaluarMedicion()`**. Está definido en `Sensor` con una versión general y cada subclase lo sobrescribe con sus propios límites y su propio texto:
+
+| Clase | Resultado de `evaluarMedicion()` |
+|---|---|
+| `Sensor` | `"Sin criterio de interpretación"` |
+| `SensorTemperatura` | `"Temperatura baja / adecuada / alta"` (18 y 30 °C) |
+| `SensorHumedad` | `"Humedad ambiental baja / adecuada / alta"` (40 y 70 %) |
+| `SensorHumedadSuelo` | `"Humedad del suelo baja / adecuada / alta"` (30 y 70 %) |
+
+También sobrescribí **`registrarMedicion(double valor)`** en `SensorHumedad` y `SensorHumedadSuelo`, para agregar la validación de 0 a 100 %.
+
+### 2. ¿Qué indica `@Override`?
+
+Le indica al compilador que ese método **debe reemplazar** a uno que ya existe en la superclase, y le pide que lo verifique. Si me equivoco en el nombre o en los parámetros, el programa no compila. Lo probé escribiendo `evaluarMedicon()` (sin la "i"): con `@Override` aparece el error *"method does not override or implement a method from a supertype"*. Sin la anotación, Java habría aceptado ese método como uno nuevo, y el sensor de temperatura seguiría usando la versión general de `Sensor` sin que yo me diera cuenta.
+
+### 3. ¿Por qué utilicé el mismo nombre de método en las diferentes subclases?
+
+Porque **es la misma acción**: "interpreta tu medición". Lo que cambia es cómo la hace cada sensor, no lo que se le pide. Usar el mismo nombre permite que el código que usa los sensores les pida lo mismo a todos sin preocuparse por el tipo. En mi programa ya se nota en `obtenerResumen()`: está escrito una sola vez en `Sensor`, llama a `evaluarMedicion()` y aun así cada sensor muestra su propia interpretación (secciones 2 a 4 de la salida).
+
+### 4. ¿Qué ventaja tiene esto frente a crear un método diferente para cada tipo de sensor?
+
+Si hubiera creado `evaluarTemperatura()`, `evaluarHumedadAmbiental()` y `evaluarHumedadSuelo()`:
+
+- `obtenerResumen()` no podría escribirse una sola vez en `Sensor`, porque `Sensor` no sabría a cuál de los tres métodos llamar. Tendría que repetirlo en cada subclase.
+- Cualquier código que trabaje con varios sensores tendría que averiguar el tipo de cada uno y elegir el método con una cadena de `if/else`.
+- Al agregar un tipo nuevo (por ejemplo, un `SensorLuminosidad`) habría que modificar todos esos `if/else`. Con el mismo nombre, basta con que la clase nueva sobrescriba `evaluarMedicion()`.
+
+Esta es la base del polimorfismo que se trabaja en la Fase 4: poder tratar a todos los sensores como `Sensor` y que cada uno responda a su manera.
+
+---
+
+# Fase 4. Polimorfismo y enlace dinámico
+
+## 14. Colección polimórfica
+
+En `Main` creé un arreglo de tipo `Sensor` que guarda los tres sensores:
+
+```java
+Sensor[] sensores = {temperatura, humedad, humedadSuelo};
+```
+
+Las variables `temperatura`, `humedad` y `humedadSuelo` son de tipo `SensorTemperatura`, `SensorHumedad` y `SensorHumedadSuelo`, pero el arreglo las acepta sin ninguna conversión porque cada una **es un** `Sensor`.
+
+Los objetos no se copian ni se transforman al guardarlos en el arreglo. `sensores[0]` y `temperatura` apuntan **al mismo objeto**; lo único distinto es el tipo de la referencia con la que se le ve:
+
+| Referencia | Tipo de la referencia | Objeto al que apunta | Tipo real del objeto |
+|---|---|---|---|
+| `temperatura` | `SensorTemperatura` | T-01 | `SensorTemperatura` |
+| `sensores[0]` | `Sensor` | T-01 (el mismo) | `SensorTemperatura` |
+| `humedad` | `SensorHumedad` | H-01 | `SensorHumedad` |
+| `sensores[1]` | `Sensor` | H-01 (el mismo) | `SensorHumedad` |
+| `humedadSuelo` | `SensorHumedadSuelo` | S-01 | `SensorHumedadSuelo` |
+| `sensores[2]` | `Sensor` | S-01 (el mismo) | `SensorHumedadSuelo` |
+
+- El **tipo de la referencia** está escrito en el código y nunca cambia: todos los elementos del arreglo son `Sensor`.
+- El **tipo real del objeto** se decide en el `new` y tampoco cambia: T-01 se creó con `new SensorTemperatura(...)` y siempre será un `SensorTemperatura`.
+
+Para mostrar el tipo real en la salida usé `getClass().getSimpleName()`. `getClass()` es un método que todas las clases heredan de `Object`. Lo uso **solo para mostrar** el tipo, nunca para decidir qué hacer.
+
+Usé un arreglo `Sensor[]` porque en `Main` la cantidad de sensores es fija (tres). En el `Invernadero` (Fase 5) usaré `ArrayList<Sensor>`, como está en el UML, porque ahí los sensores se agregan uno por uno con `agregarSensor()` y la lista tiene que poder crecer.
+
+---
+
+## 15. Procesamiento polimórfico
+
+Recorro el arreglo y le pido a cada sensor que evalúe su medición:
+
+```java
+for (Sensor sensor : sensores) {
+    System.out.println(sensor.getId() + " (" + sensor.getUltimaMedicion() + " "
+            + sensor.getUnidad() + ") -> " + sensor.evaluarMedicion());
+}
+```
+
+No hay ningún `if/else` que pregunte el tipo de sensor. La instrucción `sensor.evaluarMedicion()` es la misma en las tres vueltas del ciclo y aun así cada sensor responde con sus propios criterios:
+
+```text
+T-01 (33.0 °C) -> Temperatura alta
+H-01 (45.0 %) -> Humedad ambiental adecuada
+S-01 (20.0 %) -> Humedad del suelo baja
+```
+
+Sin polimorfismo, este ciclo tendría que ser algo así:
+
+```java
+// Lo que NO hice
+if (/* el sensor es de temperatura */) {
+    // evaluar con 18 y 30
+} else if (/* el sensor es de humedad ambiental */) {
+    // evaluar con 40 y 70
+} else if (/* el sensor es de humedad del suelo */) {
+    // evaluar con 30 y 70
+}
+```
+
+y habría que modificarlo cada vez que se agregara un tipo de sensor nuevo.
+
+### Lo que una referencia `Sensor` NO permite
+
+Esta línea **no compila**, aunque `sensores[2]` apunte a un `SensorHumedadSuelo`:
+
+```java
+sensores[2].requiereRiego();   // error: cannot find symbol
+```
+
+El compilador solo mira el tipo de la referencia (`Sensor`), y `Sensor` no tiene el método `requiereRiego()`. A través de una referencia `Sensor` solo se pueden usar los métodos que existen en `Sensor`. Para usar un método que solo tiene una subclase hacen falta `instanceof` y casting (Fase 5). Dejé esta línea comentada en `Main` como recordatorio.
+
+---
+
+## 16. Enlace dinámico
+
+### Demostraciones en `Main`
+
+**Sección 10: una variable, tres objetos.** Uso una sola variable de tipo `Sensor` y le asigno tres objetos distintos, uno después de otro. La instrucción que ejecuto es siempre `referencia.evaluarMedicion()` con el mismo valor (32):
+
+```java
+Sensor referencia;
+
+referencia = new SensorTemperatura("T-02", "Zona este");
+referencia.registrarMedicion(32);
+referencia.evaluarMedicion();   // "Temperatura alta"
+
+referencia = new SensorHumedad("H-02", "Zona este");
+referencia.registrarMedicion(32);
+referencia.evaluarMedicion();   // "Humedad ambiental baja"
+
+referencia = new SensorHumedadSuelo("S-02", "Zona este");
+referencia.registrarMedicion(32);
+referencia.evaluarMedicion();   // "Humedad del suelo adecuada"
+```
+
+El tipo de la variable no cambió, la instrucción no cambió y el valor no cambió. Lo único que cambió fue el objeto, y eso bastó para que se ejecutara un método diferente.
+
+**Sección 11: también funciona con `registrarMedicion()`.** Llamo a `sensor.registrarMedicion(-5)` en los tres sensores del arreglo:
+
+```text
+T-01 (SensorTemperatura) -> ¿aceptada? true
+H-01 (SensorHumedad) -> ¿aceptada? false
+S-01 (SensorHumedadSuelo) -> ¿aceptada? false
+```
+
+-5 °C es una temperatura posible, pero -5 % no es una humedad posible. `SensorTemperatura` no sobrescribe `registrarMedicion()`, así que se ejecuta la versión de `Sensor`, que acepta el valor. Las dos humedades sí lo sobrescriben, así que se ejecuta su versión, que lo rechaza.
+
+**Sección 12: un método heredado que llama a uno sobrescrito.** `obtenerResumen()` **no** está sobrescrito: para los tres sensores se ejecuta el mismo código, el que está en `Sensor`. Pero dentro de ese código se llama a `evaluarMedicion()`, y ahí sí se ejecuta la versión de cada subclase:
+
+```text
+[T-01] Zona norte | ACTIVO | -5.0 °C -> Temperatura baja
+[H-01] Zona central | ACTIVO | 45.0 % -> Humedad ambiental adecuada
+[S-01] Zona sur | ACTIVO | 20.0 % -> Humedad del suelo baja
+```
+
+Cuando escribí `Sensor.java`, esa clase no menciona en ninguna parte a `SensorTemperatura`, `SensorHumedad` ni `SensorHumedadSuelo`. Aun así, su método `obtenerResumen()` termina ejecutando código de las subclases. Esto solo es posible si la decisión se toma **durante la ejecución**, con el objeto real.
+
+### Tabla de enlace dinámico
+
+| Tipo de referencia | Tipo real del objeto | Método que se ejecuta |
+|---|---|---|
+| `Sensor` | `SensorTemperatura` | `evaluarMedicion()` de `SensorTemperatura` (límites 18 y 30 °C) |
+| `Sensor` | `SensorHumedad` | `evaluarMedicion()` de `SensorHumedad` (límites 40 y 70 %) |
+| `Sensor` | `SensorHumedadSuelo` | `evaluarMedicion()` de `SensorHumedadSuelo` (límites 30 y 70 %) |
+
+Otros casos que también se observan en mi programa:
+
+| Llamada | Tipo de referencia | Tipo real del objeto | Método que se ejecuta | Por qué |
+|---|---|---|---|---|
+| `registrarMedicion(-5)` | `Sensor` | `SensorTemperatura` | El de `Sensor` | `SensorTemperatura` no lo sobrescribe |
+| `registrarMedicion(-5)` | `Sensor` | `SensorHumedad` | El de `SensorHumedad` | Lo sobrescribe |
+| `getId()` | `Sensor` | Cualquiera de los tres | El de `Sensor` | Ninguna subclase lo sobrescribe |
+| `obtenerResumen()` | `Sensor` | Cualquiera de los tres | El de `Sensor`… | Ninguna subclase lo sobrescribe |
+| …y dentro de él, `evaluarMedicion()` | — | El del objeto | El de la subclase | Las tres lo sobrescriben |
+
+En **ninguna** ejecución de mi programa aparece el texto `"Sin criterio de interpretación"` de `Sensor`, aunque todas las referencias del arreglo sean de tipo `Sensor`. Eso confirma que nunca se usa la versión de la referencia, sino la del objeto.
+
+### 1. ¿Por qué una referencia de tipo `Sensor` puede apuntar a un objeto `SensorTemperatura`?
+
+Porque `SensorTemperatura` hereda de `Sensor` (`extends Sensor`), así que un sensor de temperatura **es un** sensor. Tiene todo lo que tiene un `Sensor`: los mismos atributos y todos sus métodos públicos, heredados o sobrescritos. Por eso, cualquier cosa que se le pueda pedir a un `Sensor` (`getId()`, `registrarMedicion()`, `evaluarMedicion()`…) también se le puede pedir a un `SensorTemperatura`, y no hay ningún riesgo. En mi código esto se ve en `Sensor[] sensores = {temperatura, humedad, humedadSuelo};` y en `referencia = new SensorTemperatura(...)`: Java lo acepta sin necesidad de ninguna conversión.
+
+### 2. ¿Puede una referencia `SensorTemperatura` apuntar directamente a cualquier objeto `Sensor`?
+
+**No.** No todo sensor es un sensor de temperatura. Si se permitiera, podría escribir `t.convertirAFahrenheit()` sobre un sensor de humedad, lo que no tiene sentido.
+
+Lo comprobé con esta línea:
+
+```java
+SensorTemperatura t = sensores[0];
+// error: incompatible types: Sensor cannot be converted to SensorTemperatura
+```
+
+No compila, **aunque `sensores[0]` sí apunte a un `SensorTemperatura`**. El compilador no revisa a qué objeto apunta la referencia; solo ve que es de tipo `Sensor`, y un `Sensor` cualquiera podría no ser de temperatura. Para hacerlo hay que comprobar primero el tipo con `instanceof` y después hacer un casting, lo cual corresponde a la Fase 5.
+
+### 3. Cuando ejecuto `sensor.evaluarMedicion()`, ¿qué versión del método se ejecuta?
+
+La del **tipo real del objeto**, no la del tipo de la referencia. En el ciclo de la sección 9, `sensor` siempre es una referencia `Sensor`, pero en la primera vuelta se ejecuta `evaluarMedicion()` de `SensorTemperatura`, en la segunda la de `SensorHumedad` y en la tercera la de `SensorHumedadSuelo`. La versión general de `Sensor` nunca se ejecuta en mi programa.
+
+### 4. ¿Cómo determina Java cuál implementación utilizar?
+
+En dos momentos diferentes:
+
+1. **Al compilar**, el compilador revisa el **tipo de la referencia** y decide si la llamada está permitida. `sensor.evaluarMedicion()` compila porque `Sensor` tiene ese método. `sensor.requiereRiego()` no compila porque `Sensor` no lo tiene. En este momento todavía no se decide qué versión se ejecutará.
+2. **Al ejecutar**, Java revisa el **objeto real** al que apunta la referencia y busca el método empezando por la clase de ese objeto. Si la clase lo sobrescribe, usa esa versión. Si no, sube a la superclase y lo busca ahí.
+
+Por ejemplo, con un objeto `SensorTemperatura`:
+
+- `evaluarMedicion()`: lo encuentra en `SensorTemperatura` → usa esa versión.
+- `registrarMedicion(-5)`: no está en `SensorTemperatura` → sube a `Sensor` → usa esa versión.
+- `getId()`: no está en `SensorTemperatura` → sube a `Sensor` → usa esa versión.
+
+En resumen: **el tipo de la referencia decide qué métodos se pueden llamar; el tipo real del objeto decide qué versión se ejecuta.**
+
+### 5. ¿Dónde puedo observar el polimorfismo?
+
+- En el arreglo `Sensor[] sensores`, que guarda tres tipos de objetos distintos con un solo tipo de referencia (sección 8 de `Main`).
+- En el ciclo de la sección 9: una sola instrucción, `sensor.evaluarMedicion()`, se comporta de tres formas diferentes.
+- En la sección 11: `sensor.registrarMedicion(-5)` acepta el valor en un sensor y lo rechaza en los otros dos.
+
+El polimorfismo es la **capacidad**: una referencia de tipo `Sensor` puede apuntar a objetos de diferentes "formas" (`SensorTemperatura`, `SensorHumedad`, `SensorHumedadSuelo`), y una misma llamada se comporta según la forma del objeto.
+
+### 6. ¿Dónde puedo observar el enlace dinámico?
+
+- En la sección 10 de `Main`: la variable `referencia` y la instrucción `referencia.evaluarMedicion()` son siempre las mismas, pero el método que se ejecuta cambia según el objeto asignado en ese momento.
+- En la sección 12: `obtenerResumen()` está escrito en `Sensor` y no conoce a las subclases, pero termina ejecutando su `evaluarMedicion()`. Eso solo puede resolverse durante la ejecución.
+
+El enlace dinámico es el **mecanismo** que hace posible el polimorfismo: el *enlace* (qué código corresponde a una llamada) se resuelve durante la ejecución (*dinámico*) y no al compilar. Una consecuencia práctica: si mañana agrego un `SensorLuminosidad` que sobrescriba `evaluarMedicion()`, `obtenerResumen()` y el ciclo de la sección 9 funcionarían con él sin cambiar una sola línea.
+
+### Resultado de la ejecución (secciones de la Fase 4)
+
+```text
+=== 8. Colección de sensores: tipo de la referencia vs. tipo real ===
+T-01 | referencia: Sensor | objeto real: SensorTemperatura
+H-01 | referencia: Sensor | objeto real: SensorHumedad
+S-01 | referencia: Sensor | objeto real: SensorHumedadSuelo
+
+=== 9. Procesamiento polimórfico ===
+T-01 (33.0 °C) -> Temperatura alta
+H-01 (45.0 %) -> Humedad ambiental adecuada
+S-01 (20.0 %) -> Humedad del suelo baja
+
+=== 10. Enlace dinámico: una variable, tres objetos, el mismo valor (32) ===
+SensorTemperatura -> Temperatura alta
+SensorHumedad -> Humedad ambiental baja
+SensorHumedadSuelo -> Humedad del suelo adecuada
+
+=== 11. registrarMedicion(-5) en cada sensor ===
+T-01 (SensorTemperatura) -> ¿aceptada? true
+H-01 (SensorHumedad) -> ¿aceptada? false
+S-01 (SensorHumedadSuelo) -> ¿aceptada? false
+
+=== 12. obtenerResumen() (heredado) llama a evaluarMedicion() (sobrescrito) ===
+[T-01] Zona norte | ACTIVO | -5.0 °C -> Temperatura baja
+[H-01] Zona central | ACTIVO | 45.0 % -> Humedad ambiental adecuada
+[S-01] Zona sur | ACTIVO | 20.0 % -> Humedad del suelo baja
+```
