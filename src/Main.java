@@ -154,6 +154,46 @@ public class Main {
             System.out.println(sensor.obtenerResumen());
         }
 
+        //FASE 5: instanceof, casting y sistema de riego
+
+        // 13. instanceof comprueba el tipo REAL del objeto, no el de la referencia.
+        //     Todos son instanceof Sensor (porque todos "son un" Sensor),
+        //     pero cada uno solo es instanceof de su propia subclase.
+        System.out.println();
+        System.out.println("=== 13. instanceof: ¿de qué tipo es realmente cada objeto? ===");
+        for (Sensor sensor : sensores) {
+            System.out.println(sensor.getId()
+                    + " | Sensor: " + (sensor instanceof Sensor)
+                    + " | SensorTemperatura: " + (sensor instanceof SensorTemperatura)
+                    + " | SensorHumedad: " + (sensor instanceof SensorHumedad)
+                    + " | SensorHumedadSuelo: " + (sensor instanceof SensorHumedadSuelo));
+        }
+
+        // 14. Casting después de comprobar el tipo.
+        //     convertirAFahrenheit() y requiereRiego() no existen en Sensor,
+        //     así que con una referencia Sensor no se pueden llamar.
+        //     El casting crea una referencia del tipo específico hacia el MISMO objeto.
+        System.out.println();
+        System.out.println("=== 14. Casting para usar comportamientos específicos ===");
+        for (Sensor sensor : sensores) {
+            if (sensor instanceof SensorTemperatura) {
+                SensorTemperatura sensorTemperatura = (SensorTemperatura) sensor;
+                System.out.println(sensor.getId() + ": " + sensorTemperatura.getUltimaMedicion()
+                        + " °C = " + sensorTemperatura.convertirAFahrenheit() + " °F");
+            } else if (sensor instanceof SensorHumedadSuelo) {
+                SensorHumedadSuelo sensorSuelo = (SensorHumedadSuelo) sensor;
+                System.out.println(sensor.getId() + ": " + sensorSuelo.getUltimaMedicion()
+                        + " % -> ¿requiere riego? " + sensorSuelo.requiereRiego());
+            } else {
+                System.out.println(sensor.getId() + ": no tiene un comportamiento específico que usar aquí");
+            }
+        }
+
+        // Casting incorrecto: COMPILA, pero al ejecutarse lanza ClassCastException,
+        // porque sensores[1] es un SensorHumedad, no un SensorTemperatura.
+        // Por eso siempre se comprueba antes con instanceof.
+        // SensorTemperatura incorrecto = (SensorTemperatura) sensores[1];
+
 
     }
 
