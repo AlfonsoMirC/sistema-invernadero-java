@@ -441,3 +441,151 @@ Dejo anotadas las decisiones de las que no estoy completamente seguro, para revi
 - Si `evaluarMedicion()` también debería tomar en cuenta si el sensor está inactivo, o si basta con que lo haga `obtenerResumen()`.
 - Si hace falta distinguir un sensor que todavía no tiene mediciones de uno que midió exactamente 0.
 - Si `mostrarEstado()` y `evaluarSensores()` deben seguir siendo métodos separados.
+
+---
+
+# Fase 3. Implementación de la jerarquía y sobrescritura
+
+## 11. Implementación
+
+En esta fase implementé la jerarquía de sensores tal como aparece en el UML inicial:
+
+| Archivo | Contenido |
+|---|---|
+| `src/Sensor.java` | Superclase con los cinco atributos `private`, constructor, métodos de consulta, `activar()`, `desactivar()`, `registrarMedicion()`, la versión general de `evaluarMedicion()` y `obtenerResumen()`. |
+| `src/SensorTemperatura.java` | Límites 18 y 30, constructor con `super(id, ubicacion, "°C")`, `convertirAFahrenheit()` y `evaluarMedicion()` sobrescrito. |
+| `src/SensorHumedad.java` | Límites 40 y 70, constructor con `super(id, ubicacion, "%")`, `registrarMedicion()` y `evaluarMedicion()` sobrescritos. |
+| `src/SensorHumedadSuelo.java` | Límites 30 y 70, constructor con `super(id, ubicacion, "%")`, `requiereRiego()`, `registrarMedicion()` y `evaluarMedicion()` sobrescritos. |
+| `src/Main.java` | Crea un sensor de cada tipo y prueba sus comportamientos. |
+
+`SistemaRiego` e `Invernadero` todavía no están implementados; corresponden a las fases 4 y 5.
+
+### Encapsulación aplicada
+
+Ningún atributo se modifica directamente desde `Main`. Por ejemplo, para cambiar la medición no existe `sensor.ultimaMedicion = 25;` (ni siquiera compilaría, porque el atributo es `private`). La única forma es `registrarMedicion(valor)`, que aplica las reglas:
+
+- Un sensor inactivo no acepta mediciones nuevas.
+- Los sensores de humedad no aceptan valores fuera de 0 a 100 %.
+
+Las subclases tampoco tocan los atributos de `Sensor` directamente: dentro de `evaluarMedicion()` leen el valor con `getUltimaMedicion()`.
+
+### Decisiones tomadas al implementar
+
+- **`evaluarMedicion()` no revisa si el sensor está inactivo.** Solo interpreta el número. Quien revisa el estado es `obtenerResumen()`, que muestra "sin evaluación" si el sensor está inactivo. Así la revisión está en un solo lugar y no se repite en las tres subclases. (Esto resuelve uno de los puntos de la sección 10.)
+- Los valores que caen justo en un límite se consideran adecuados: en el código, `< LIMITE_BAJO` es bajo, `> LIMITE_ALTO` es alto y el resto es adecuado.
+- `Main` usa por ahora **referencias del tipo específico** (`SensorTemperatura temperatura = ...`). El uso de referencias de tipo `Sensor` y la colección polimórfica corresponden a la Fase 4.
+
+Hasta este punto **el código corresponde al UML inicial sin cambios**.
+
+### Resultado de la ejecución
+
+```text
+Sistema de invernadero inteligente
+
+=== 1. Sensores creados (constructores, super y métodos heredados) ===
+T-01 | Zona norte | unidad: °C | activo: true
+H-01 | Zona central | unidad: % | activo: true
+S-01 | Zona sur | unidad: % | activo: true
+
+=== 2. Sensor de temperatura: baja, adecuada y alta ===
+[T-01] Zona norte | ACTIVO | 15.0 °C -> Temperatura baja
+[T-01] Zona norte | ACTIVO | 25.0 °C -> Temperatura adecuada
+[T-01] Zona norte | ACTIVO | 34.0 °C -> Temperatura alta
+
+=== 3. Sensor de humedad ambiental: baja, adecuada y alta ===
+[H-01] Zona central | ACTIVO | 32.0 % -> Humedad ambiental baja
+[H-01] Zona central | ACTIVO | 55.0 % -> Humedad ambiental adecuada
+[H-01] Zona central | ACTIVO | 82.0 % -> Humedad ambiental alta
+
+=== 4. Sensor de humedad del suelo: baja, adecuada y alta ===
+[S-01] Zona sur | ACTIVO | 18.0 % -> Humedad del suelo baja
+[S-01] Zona sur | ACTIVO | 48.0 % -> Humedad del suelo adecuada
+[S-01] Zona sur | ACTIVO | 83.0 % -> Humedad del suelo alta
+
+=== 5. Mismo valor (32), distinta interpretación ===
+T-01: Temperatura alta
+H-01: Humedad ambiental baja
+S-01: Humedad del suelo adecuada
+
+=== 6. Reglas al registrar mediciones (encapsulación) ===
+H-01 intenta registrar 150 %: false | última medición: 32.0 %
+T-01 inactivo intenta registrar 20 °C: false | última medición: 32.0 °C
+[T-01] Zona norte | INACTIVO | sin evaluación
+T-01 activado de nuevo:
+[T-01] Zona norte | ACTIVO | 32.0 °C -> Temperatura alta
+
+=== 7. Comportamientos propios de una subclase ===
+T-01: 32.0 °C = 89.6 °F
+S-01 con 22.0 %: ¿requiere riego? true
+S-01 con 55.0 %: ¿requiere riego? false
+```
+
+La sección 5 de la salida es la que mejor muestra la sobrescritura: el mismo método, `evaluarMedicion()`, con el mismo valor (32), da tres respuestas diferentes según el tipo de sensor, igual que en el ejemplo del documento de contexto.
+
+---
+
+## 12. Constructores y `super`
+
+### 1. ¿Los constructores de la superclase se heredan?
+
+**No.** Un constructor lleva el nombre de su clase, así que `SensorTemperatura` no recibe el constructor `Sensor(id, ubicacion, unidad)`; tiene que declarar el suyo. Lo comprobé en mi código: si intento crear
+
+```java
+//new SensorTemperatura("T-01", "Zona norte", "°C");
+```
+
+el programa no compila, porque `SensorTemperatura` solo tiene un constructor de dos parámetros, aunque `Sensor` tenga uno de tres. Lo que sí se heredan son los métodos públicos, como `getId()` o `activar()`. Los atributos `private` de `Sensor` sí forman parte de cada objeto `SensorTemperatura` (cada uno tiene su propio `id`, su `ubicacion`, etc.), pero la subclase no puede usarlos directamente; los consulta con los métodos públicos.
+
+### 2. Cuando creo un objeto de una subclase, ¿qué constructor se ejecuta primero?
+
+**Primero se ejecuta el de la superclase.** Al hacer `new SensorTemperatura("T-01", "Zona norte")`:
+
+1. Se entra al constructor de `SensorTemperatura`.
+2. Su primera instrucción es `super(id, ubicacion, "°C")`, que ejecuta el constructor de `Sensor`. Este guarda `id`, `ubicacion` y `unidad`, y deja `activo = true` y `ultimaMedicion = 0.0`.
+3. Al terminar, se regresa al constructor de `SensorTemperatura` y se ejecuta lo que siga después de `super(...)`. En mi caso no hay nada más, porque los límites son constantes `static`.
+
+Java obliga a que `super(...)` sea la primera instrucción: la parte "sensor" del objeto tiene que estar lista antes que la parte "sensor de temperatura". También comprobé que si quito la línea `super(...)`, el programa no compila. Sin ella, Java intenta llamar automáticamente a un constructor `Sensor()` sin parámetros, y mi clase `Sensor` no tiene uno.
+
+### 3. ¿Para qué utilicé `super(...)`?
+
+Para dos cosas:
+
+- **Inicializar la parte del objeto que pertenece a `Sensor`.** Los atributos `id`, `ubicacion`, `unidad`, `activo` y `ultimaMedicion` son `private` en `Sensor`, así que la subclase no puede asignarlos directamente. La única forma es pedirle al constructor de `Sensor` que lo haga.
+- **Fijar la unidad de cada tipo de sensor.** Cada subclase pasa su unidad fija: `"°C"` en `SensorTemperatura` y `"%"` en las dos humedades. Por eso quien crea el sensor no tiene que (ni puede) indicar la unidad.
+
+Además usé `super` en un método: en `SensorHumedad` y `SensorHumedadSuelo`, el `registrarMedicion(valor)` sobrescrito revisa que el valor esté entre 0 y 100 y después llama a `super.registrarMedicion(valor)`. Así no repito la regla de "solo registrar si está activo", que ya está en `Sensor`; solo agrego la regla que le corresponde a las humedades.
+
+---
+
+## 13. Sobrescritura
+
+### 1. ¿Qué método sobrescribí?
+
+Principalmente **`evaluarMedicion()`**. Está definido en `Sensor` con una versión general y cada subclase lo sobrescribe con sus propios límites y su propio texto:
+
+| Clase | Resultado de `evaluarMedicion()` |
+|---|---|
+| `Sensor` | `"Sin criterio de interpretación"` |
+| `SensorTemperatura` | `"Temperatura baja / adecuada / alta"` (18 y 30 °C) |
+| `SensorHumedad` | `"Humedad ambiental baja / adecuada / alta"` (40 y 70 %) |
+| `SensorHumedadSuelo` | `"Humedad del suelo baja / adecuada / alta"` (30 y 70 %) |
+
+También sobrescribí **`registrarMedicion(double valor)`** en `SensorHumedad` y `SensorHumedadSuelo`, para agregar la validación de 0 a 100 %.
+
+### 2. ¿Qué indica `@Override`?
+
+Le indica al compilador que ese método **debe reemplazar** a uno que ya existe en la superclase, y le pide que lo verifique. Si me equivoco en el nombre o en los parámetros, el programa no compila. Lo probé escribiendo `evaluarMedicon()` (sin la "i"): con `@Override` aparece el error *"method does not override or implement a method from a supertype"*. Sin la anotación, Java habría aceptado ese método como uno nuevo, y el sensor de temperatura seguiría usando la versión general de `Sensor` sin que yo me diera cuenta.
+
+### 3. ¿Por qué utilicé el mismo nombre de método en las diferentes subclases?
+
+Porque **es la misma acción**: "interpreta tu medición". Lo que cambia es cómo la hace cada sensor, no lo que se le pide. Usar el mismo nombre permite que el código que usa los sensores les pida lo mismo a todos sin preocuparse por el tipo. En mi programa ya se nota en `obtenerResumen()`: está escrito una sola vez en `Sensor`, llama a `evaluarMedicion()` y aun así cada sensor muestra su propia interpretación (secciones 2 a 4 de la salida).
+
+### 4. ¿Qué ventaja tiene esto frente a crear un método diferente para cada tipo de sensor?
+
+Si hubiera creado `evaluarTemperatura()`, `evaluarHumedadAmbiental()` y `evaluarHumedadSuelo()`:
+
+- `obtenerResumen()` no podría escribirse una sola vez en `Sensor`, porque `Sensor` no sabría a cuál de los tres métodos llamar. Tendría que repetirlo en cada subclase.
+- Cualquier código que trabaje con varios sensores tendría que averiguar el tipo de cada uno y elegir el método con una cadena de `if/else`.
+- Al agregar un tipo nuevo (por ejemplo, un `SensorLuminosidad`) habría que modificar todos esos `if/else`. Con el mismo nombre, basta con que la clase nueva sobrescriba `evaluarMedicion()`.
+
+Esta es la base del polimorfismo que se trabaja en la Fase 4: poder tratar a todos los sensores como `Sensor` y que cada uno responda a su manera.
