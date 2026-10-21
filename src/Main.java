@@ -79,6 +79,36 @@ public class Main {
         System.out.println("S-01 con " + humedadSuelo.getUltimaMedicion() + " %: ¿requiere riego? " + humedadSuelo.requiereRiego());
         humedadSuelo.registrarMedicion(55);
         System.out.println("S-01 con " + humedadSuelo.getUltimaMedicion() + " %: ¿requiere riego? " + humedadSuelo.requiereRiego());
+
+        // ==================== FASE 4: polimorfismo y enlace dinámico ====================
+
+        // 8. Colección polimórfica.
+        //    El arreglo es de tipo Sensor, pero guarda objetos de tres subclases distintas.
+        //    Son los mismos objetos de antes: no se copian ni se transforman,
+        //    solo se guardan referencias de tipo Sensor que apuntan a ellos.
+        temperatura.registrarMedicion(33);
+        humedad.registrarMedicion(45);
+        humedadSuelo.registrarMedicion(20);
+
+        Sensor[] sensores = {temperatura, humedad, humedadSuelo};
+
+        System.out.println();
+        System.out.println("=== 8. Colección de sensores: tipo de la referencia vs. tipo real ===");
+        for (Sensor sensor : sensores) {
+            // getClass() devuelve la clase real del objeto. Aquí solo se usa para mostrarla.
+            System.out.println(sensor.getId() + " | referencia: Sensor | objeto real: " + sensor.getClass().getSimpleName());
+        }
+
+        // 9. Procesamiento polimórfico.
+        //    La misma instrucción para todos los sensores, sin if/else:
+        //    cada objeto ejecuta su propia versión de evaluarMedicion().
+        System.out.println();
+        System.out.println("=== 9. Procesamiento polimórfico ===");
+        for (Sensor sensor : sensores) {
+            System.out.println(sensor.getId() + " (" + sensor.getUltimaMedicion() + " " + sensor.getUnidad() + ") -> " + sensor.evaluarMedicion());
+        }
+
+
     }
 
 }
