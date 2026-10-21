@@ -1,7 +1,13 @@
 public class Main {
 
     public static void main(String[] args) {
+        //Fase 1: Creación del proyecto, repositorio y análisis orientado a objetos
         System.out.println("Sistema de invernadero inteligente");
+
+        //Fase 2: Diseño orientado a objetos y UML
+        //En esta fase no se trabajo codigo, solo la parte conceptual
+
+        //Fase 3: Implementación de la jerarquía y sobrescritura
 
         // 1. Creación de objetos mediante los constructores.
         //    Cada subclase llama a super(...) para fijar su unidad.
@@ -80,7 +86,7 @@ public class Main {
         humedadSuelo.registrarMedicion(55);
         System.out.println("S-01 con " + humedadSuelo.getUltimaMedicion() + " %: ¿requiere riego? " + humedadSuelo.requiereRiego());
 
-        // ==================== FASE 4: polimorfismo y enlace dinámico ====================
+        //Fase 4: Polimorfismo y Enlace Dinamico
 
         // 8. Colección polimórfica.
         //    El arreglo es de tipo Sensor, pero guarda objetos de tres subclases distintas.
@@ -106,6 +112,46 @@ public class Main {
         System.out.println("=== 9. Procesamiento polimórfico ===");
         for (Sensor sensor : sensores) {
             System.out.println(sensor.getId() + " (" + sensor.getUltimaMedicion() + " " + sensor.getUnidad() + ") -> " + sensor.evaluarMedicion());
+        }
+
+        // 10. Enlace dinámico con una sola variable.
+        //     La variable "referencia" siempre es de tipo Sensor y la instrucción
+        //     referencia.evaluarMedicion() es siempre la misma, pero el metodo que
+        //     se ejecuta depende del objeto al que apunta en ese momento.
+        System.out.println();
+        System.out.println("=== 10. Enlace dinámico: una variable, tres objetos, el mismo valor (32) ===");
+        Sensor referencia;
+
+        referencia = new SensorTemperatura("T-02", "Zona este");
+        referencia.registrarMedicion(32);
+        System.out.println(referencia.getClass().getSimpleName() + " -> " + referencia.evaluarMedicion());
+
+        referencia = new SensorHumedad("H-02", "Zona este");
+        referencia.registrarMedicion(32);
+        System.out.println(referencia.getClass().getSimpleName() + " -> " + referencia.evaluarMedicion());
+
+        referencia = new SensorHumedadSuelo("S-02", "Zona este");
+        referencia.registrarMedicion(32);
+        System.out.println(referencia.getClass().getSimpleName() + " -> " + referencia.evaluarMedicion());
+
+        // 11. El enlace dinámico también aplica a registrarMedicion().
+        //     -5 es una temperatura posible, pero no una humedad posible.
+        System.out.println();
+        System.out.println("=== 11. registrarMedicion(-5) en cada sensor ===");
+        for (Sensor sensor : sensores) {
+            boolean aceptada = sensor.registrarMedicion(-5);
+            System.out.println(sensor.getId() + " (" + sensor.getClass().getSimpleName()
+                    + ") -> ¿aceptada? " + aceptada);
+        }
+
+        // 12. Metodo heredado que llama a un metodo sobrescrito.
+        //     obtenerResumen() no está sobrescrito: para los tres se ejecuta el código de Sensor.
+        //     Pero dentro de él se llama a evaluarMedicion(), y ahí sí se ejecuta
+        //     la versión de cada subclase.
+        System.out.println();
+        System.out.println("=== 12. obtenerResumen() (heredado) llama a evaluarMedicion() (sobrescrito) ===");
+        for (Sensor sensor : sensores) {
+            System.out.println(sensor.obtenerResumen());
         }
 
 
